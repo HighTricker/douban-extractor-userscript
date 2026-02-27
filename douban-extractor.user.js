@@ -433,10 +433,8 @@
         return;
       }
 
-      logger(`共 ${allPics.length} 张图片，开始下载到内存...`);
+      logger(`共 ${allPics.length} 张图片，开始逐张下载到磁盘...`);
 
-      const zip = new JSZip();
-      // 预扫描：统计每个日期有多少张图
       const dateTotals = {};
       for (const pic of allPics) {
         dateTotals[pic.date] = (dateTotals[pic.date] || 0) + 1;
@@ -450,8 +448,7 @@
         const ext = this.extractExt(url);
         const filename = this.buildFilename(date, ext, dateTotals, dateUsed);
         try {
-          const blob = await this.fetchBlob(url);
-          zip.file(filename, blob);
+          await this.gmDownload(url, filename);
           success++;
           logger(`[${i + 1}/${allPics.length}] 下载成功: ${filename}`);
         } catch (e) {
@@ -463,47 +460,17 @@
         }
       }
 
-      if (success === 0) {
-        logger('所有图片下载失败，无法生成 ZIP');
-        return;
-      }
-
-      logger(`正在生成 ZIP 文件...`);
-      try {
-        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-        const today = new Date().toISOString().slice(0, 10);
-        const zipName = `豆瓣日记图片_${today}.zip`;
-        const blobUrl = URL.createObjectURL(zipBlob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = zipName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-        logger(`下载完成：成功 ${success}，失败 ${fail}，已打包为 ${zipName}`);
-      } catch (e) {
-        logger(`ZIP 生成失败: ${e.message}`, 'error');
-      }
+      logger(`下载完成：成功 ${success}，失败 ${fail}，已保存到浏览器下载目录`);
     },
 
-    fetchBlob(url) {
+    gmDownload(url, filename) {
       return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-          method: 'GET',
+        GM_download({
           url: url,
-          responseType: 'blob',
-          headers: {
-            'Referer': 'https://www.douban.com/'
-          },
-          onload: (resp) => {
-            if (resp.status < 200 || resp.status >= 300) {
-              reject(new Error(`HTTP ${resp.status}`));
-              return;
-            }
-            resolve(resp.response);
-          },
-          onerror: () => reject(new Error('network error')),
+          name: `豆瓣图片/${filename}`,
+          headers: { 'Referer': 'https://www.douban.com/' },
+          onload: () => resolve(),
+          onerror: (e) => reject(new Error(e.error || 'download error')),
           ontimeout: () => reject(new Error('timeout'))
         });
       });
